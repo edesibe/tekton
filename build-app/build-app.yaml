@@ -1,0 +1,69 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: build-app
+spec:
+  # A Task step and Pipeline Task can share a common filesystem via a Tekton workspace.The workspace could be either backed by something
+  # like PVC and a ConfigMap, or just ephemeral (emptyDir)
+  workspaces:
+  - name: source
+    description: The git repo will be cloned onto the volume backing this workspace
+  # A Task can have parameters;this feature makes the execution dynamic
+  params:
+  - name: contextDir
+    default: quarkus
+    description: the context dir within source
+  - name: tlsVerify
+    description: tls verify
+    type: string
+    default: "false"
+  - name: url
+    default: https://github.com/gitops-cookbook/tekton-tutorial-greeter.git
+  - name: revision
+    default: master
+  - name: subdirectory
+    default: ""
+  - name: sslVerify
+    description: defines if http.sslVerify should be set to true or false in the global git config
+    type: string
+    default: "false"
+  steps:
+    - name: clone
+      image: 'gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init:v0.21.0' 
+      resources: {}
+      script: |
+        CHECKOUT_DIR="$(workspaces.source.path)/$(params.subdirectory)"
+        cleandir(){
+          # Delete any existing contents of teh repo directory if it exists.
+          #
+          # We don't just "rm -rf $CHECKOUT_DIR" because $CHECKOUT_DIR might be "/"
+          # or the root of a mounted volume.
+          if [[ -d "$CHECKOUT_DIR" ]] ; then
+            # Delete non-hidden files and directories
+            rm -rf "$CHECKOUT_DIR"/*
+            # Delete files and directories starting with . but excluding ..
+            rm -rf "$CHECKOUT_DIR"/.[!.]*
+            # Delete files and directories starting with .. plus any other character
+            rm -rf "$CHECKOUT_DIR"/..?*
+          fi
+        }
+        /ko-app/git-init \
+          -url "$(params.url)" \
+          -revision "$(params.revision)" \
+          -path "$CHECKOUT_DIR" \
+          -sslVerify="$(params.sslVerify)"
+        cd "$CHECKOUT_DIR"
+        RESULT_SHA="$(git rev-parse HEAD)"
+    - name: build-sources
+      image: gcr.io/cloud-builders/mvn
+      command:
+      - mvn
+      args:
+      - -DskipTests
+      - clean
+      - install
+      env:
+      - name: user.home
+        value: /home/tekton
+      workingDir: "/workspace/source/$(params.contextDir)"
+

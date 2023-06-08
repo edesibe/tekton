@@ -1,0 +1,12 @@
+apiVersion: tekton.dev/v1
+kind: Task                            # API object for creating task
+metadata:
+  name: hello                         # name of the task
+spec:
+  steps:                              # list of steps for the task, can be more then one
+  - name: say-hello                   # the name of the step
+    image: alpine:latest              # container image which will be used for the task
+    command:
+    - sh
+    - -c
+    - echo Hello Gitops
